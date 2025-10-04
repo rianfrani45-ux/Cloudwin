@@ -59,10 +59,10 @@ jobs:
         run: |
           $ztExe = "C:\Program Files\ZeroTier\One\ZeroTierOne.exe"
           if (-not (Test-Path $ztExe)) {
-            Write-Host "Installing ZeroTier using winget..."
-            winget install --id=ZeroTier.ZeroTierOne -e --silent
+              Write-Host "Instalando ZeroTier via winget..."
+              winget install --id=ZeroTier.ZeroTierOne -e --silent
           } else {
-            Write-Host "ZeroTier already installed."
+              Write-Host "ZeroTier já instalado."
           }
 
       - name: 🔐 Enable RDP user + firewall
@@ -70,12 +70,12 @@ jobs:
           $u="${{ env.RDP_USER }}"; $p="${{ env.RDP_PASS }}"
           $sec = ConvertTo-SecureString $p -AsPlainText -Force
           if (-not (Get-LocalUser -Name $u -ErrorAction SilentlyContinue)) {
-            New-LocalUser -Name $u -Password $sec -AccountNeverExpires
-            Add-LocalGroupMember -Group Administrators -Member $u
-            Add-LocalGroupMember -Group "Remote Desktop Users" -Member $u
+              New-LocalUser -Name $u -Password $sec -AccountNeverExpires
+              Add-LocalGroupMember -Group Administrators -Member $u
+              Add-LocalGroupMember -Group "Remote Desktop Users" -Member $u
           } else {
-            Set-LocalUser -Name $u -Password $sec -AccountNeverExpires
-            Enable-LocalUser -Name $u
+              Set-LocalUser -Name $u -Password $sec -AccountNeverExpires
+              Enable-LocalUser -Name $u
           }
           Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" | Out-Null
@@ -95,7 +95,8 @@ jobs:
           $mins=[int]"${{ steps.cfg.outputs.runtime }}"
           $end=(Get-Date).AddMinutes($mins)
           while((Get-Date) -lt $end){
-            $left=[int]([math]::Ceiling(($end-(Get-Date)).TotalMinutes))
-            Write-Host "RDP alive... ($left min left)"
-            Start-Sleep -Seconds 60
+              $left=[int]([math]::Ceiling(($end-(Get-Date)).TotalMinutes))
+              Write-Host "RDP alive... ($left min left)"
+              Start-Sleep -Seconds 60
           }
+

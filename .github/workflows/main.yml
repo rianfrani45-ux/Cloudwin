@@ -55,14 +55,14 @@ jobs:
           "runtime=$runtime" | Out-File -Append $env:GITHUB_OUTPUT
           Write-Host "Resolved: test=$isTest, runtime=$runtime"
 
-      - name: ⚙️ Install ZeroTier 1.6.6
+      - name: ⚙️ Install ZeroTier via winget
         run: |
-          $exe = "C:\Program Files\ZeroTier\One\ZeroTierOne.exe"
-          if (-not (Test-Path $exe)) {
-            $url = 'https://download.zerotier.com/RELEASES/1.6.6/dist/ZeroTierOne.msi'
-            $dst = "$env:TEMP\zerotier.msi"
-            Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing
-            Start-Process msiexec.exe -ArgumentList "/i $dst /quiet" -Wait
+          $ztExe = "C:\Program Files\ZeroTier\One\ZeroTierOne.exe"
+          if (-not (Test-Path $ztExe)) {
+            Write-Host "Installing ZeroTier using winget..."
+            winget install --id=ZeroTier.ZeroTierOne -e --silent
+          } else {
+            Write-Host "ZeroTier already installed."
           }
 
       - name: 🔐 Enable RDP user + firewall

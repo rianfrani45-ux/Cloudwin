@@ -6,9 +6,6 @@ on:
       zt_network_id:
         description: "ZeroTier Network ID"
         required: true
-      zt_api_token:
-        description: "ZeroTier API token (opcional, só se precisar liberar nodes via API)"
-        required: false
       gh_api_token:
         description: "GitHub Personal Access Token (classic; scopes: repo, workflow)"
         required: true
@@ -47,48 +44,37 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 370
     steps:
-      - name: 🔧 Resolve inputs (safe)
+      - name: 🔧 Resolve inputs
         id: cfg
         env:
           RAW_ZT_NETID: ${{ inputs.zt_network_id }}
-          RAW_ZT_TOKEN: ${{ inputs.zt_api_token }}
           RAW_PAT: ${{ inputs.gh_api_token }}
           RAW_TEST: ${{ inputs.test_mode == true && 'true' || 'false' }}
           RAW_RUNTIME: ${{ inputs.runtime_minutes || '355' }}
           RAW_LOOPS: ${{ inputs.loops || '0' }}
         run: |
           function ToIntOr($v, $def){ if("$v" -match '^\d+$'){[int]$v}else{[int]$def} }
-
           $ztNetId = $env:RAW_ZT_NETID
-          $ztToken = $env:RAW_ZT_TOKEN
           $pat     = $env:RAW_PAT
-
-          if (-not $ztNetId -or -not $pat) {
-            Write-Error "Missing required inputs"; exit 1
-          }
-
+          if (-not $ztNetId -or -not $pat) { Write-Error "Missing required inputs"; exit 1 }
           $isTest = ($env:RAW_TEST -match '^(?i:true|1|yes|on)$')
-
           $runtime = ToIntOr $env:RAW_RUNTIME 355
           if ($isTest) { $runtime = 5 }
           if (-not $isTest -and $runtime -lt 6) { $runtime = 355 }
           if ($runtime -gt 360) { $runtime = 355 }
-
           $loops = ToIntOr $env:RAW_LOOPS 0
           if ($loops -lt 0) { $loops = 0 }
-
           "zt_netid=$ztNetId" | Out-File -Append $env:GITHUB_OUTPUT
-          "zt_token=REDACTED" | Out-File -Append $env:GITHUB_OUTPUT
           "pat=$pat" | Out-File -Append $env:GITHUB_OUTPUT
           "runtime=$runtime" | Out-File -Append $env:GITHUB_OUTPUT
           "loops=$loops" | Out-File -Append $env:GITHUB_OUTPUT
           Write-Host "Resolved: test=$isTest, runtime=$runtime, loops=$loops"
 
-      - name: ⚙️ Install ZeroTier
+      - name: ⚙️ Install ZeroTier 1.6.6
         run: |
           $exe = "C:\Program Files\ZeroTier\One\ZeroTierOne.exe"
           if (-not (Test-Path $exe)) {
-            $url = 'https://download.zerotier.com/RELEASES/1.16.3/dist/ZeroTierOne.msi'
+            $url = 'https://download.zerotier.com/RELEASES/1.6.6/dist/ZeroTier%20One.msi'
             $dst = "$env:TEMP\zerotier.msi"
             Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing
             Start-Process msiexec.exe -ArgumentList "/i $dst /quiet" -Wait
@@ -113,7 +99,7 @@ jobs:
         run: |
           $ztCli = "C:\Program Files\ZeroTier\One\zerotier-cli.exe"
           & $ztCli join ${ { steps.cfg.outputs.zt_netid } }
-          Start-Sleep -Seconds 5
+          Start-Sleep -Seconds 10
           $ip = & $ztCli listnetworks | ForEach-Object { ($_ -split '\s+')[2] } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' } | Select-Object -First 1
           if (-not $ip) { Write-Error "ZeroTier IP not found"; exit 1 }
           "zt_ip=$ip" | Out-File -Append $env:GITHUB_OUTPUT
@@ -128,27 +114,3 @@ jobs:
             Write-Host "RDP alive... ($left min left)"
             Start-Sleep -Seconds 60
           }
-
-      - name: 🔁 Dispatch workflow B (optional handoff)
-        if: always()
-        run: |
-          $loops=[int]"${{ steps.cfg.outputs.loops }}"
-          if ($loops -eq 1) { Write-Host "Loops finished; not dispatching."; exit 0 }
-          if ($loops -gt 1) { $next=$loops-1 } else { $next=0 }
-
-          $token="${{ steps.cfg.outputs.pat }}"
-          $body=@{
-            ref    = "${{ github.ref_name }}"
-            inputs = @{
-              zt_network_id = "${{ steps.cfg.outputs.zt_netid }}"
-              gh_api_token  = "$token"
-              test_mode     = "false"
-              runtime_minutes = "${{ steps.cfg.outputs.runtime }}"
-              loops         = "$next"
-            }
-          } | ConvertTo-Json -Depth 5
-
-          Invoke-RestMethod -Method POST `
-            -Uri "https://api.github.com/repos/${{ github.repository }}/actions/workflows/windows-rdp-zerotier.yml/dispatches" `
-            -Headers @{ Authorization = "Bearer $token"; "Accept"="application/vnd.github+json" } `
-            -Body $body

@@ -6,9 +6,6 @@ on:
       zt_network_id:
         description: "ZeroTier Network ID"
         required: true
-      gh_api_token:
-        description: "GitHub Personal Access Token (classic; scopes: repo, workflow)"
-        required: true
       test_mode:
         description: "Run 5-minute test loop"
         type: boolean
@@ -17,10 +14,6 @@ on:
         description: "Runtime in minutes (max 360; capped to 355)"
         required: false
         default: "355"
-      loops:
-        description: "How many handoffs (0 = infinite)"
-        required: false
-        default: "0"
 
 concurrency:
   group: zerotier-rdp-singleton
@@ -28,7 +21,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
 
 defaults:
   run:
@@ -48,27 +40,20 @@ jobs:
         id: cfg
         env:
           RAW_ZT_NETID: ${{ inputs.zt_network_id }}
-          RAW_PAT: ${{ inputs.gh_api_token }}
           RAW_TEST: ${{ inputs.test_mode == true && 'true' || 'false' }}
           RAW_RUNTIME: ${{ inputs.runtime_minutes || '355' }}
-          RAW_LOOPS: ${{ inputs.loops || '0' }}
         run: |
           function ToIntOr($v, $def){ if("$v" -match '^\d+$'){[int]$v}else{[int]$def} }
           $ztNetId = $env:RAW_ZT_NETID
-          $pat     = $env:RAW_PAT
-          if (-not $ztNetId -or -not $pat) { Write-Error "Missing required inputs"; exit 1 }
+          if (-not $ztNetId) { Write-Error "Missing required inputs"; exit 1 }
           $isTest = ($env:RAW_TEST -match '^(?i:true|1|yes|on)$')
           $runtime = ToIntOr $env:RAW_RUNTIME 355
           if ($isTest) { $runtime = 5 }
           if (-not $isTest -and $runtime -lt 6) { $runtime = 355 }
           if ($runtime -gt 360) { $runtime = 355 }
-          $loops = ToIntOr $env:RAW_LOOPS 0
-          if ($loops -lt 0) { $loops = 0 }
           "zt_netid=$ztNetId" | Out-File -Append $env:GITHUB_OUTPUT
-          "pat=$pat" | Out-File -Append $env:GITHUB_OUTPUT
           "runtime=$runtime" | Out-File -Append $env:GITHUB_OUTPUT
-          "loops=$loops" | Out-File -Append $env:GITHUB_OUTPUT
-          Write-Host "Resolved: test=$isTest, runtime=$runtime, loops=$loops"
+          Write-Host "Resolved: test=$isTest, runtime=$runtime"
 
       - name: ⚙️ Install ZeroTier 1.6.6
         run: |

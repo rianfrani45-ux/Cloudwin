@@ -23,23 +23,16 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $dst
           Start-Process msiexec.exe -ArgumentList "/i `"$dst`" /quiet /norestart" -Wait
 
-      - name: Encontrar zerotier-cli.exe (robusto)
+      - name: Encontrar zerotier-cli.exe
         id: findcli
         shell: pwsh
         run: |
-          $possiblePaths = @(
-              "$env:ProgramFiles\ZeroTier\One\zerotier-cli.exe",
-              "$env:ProgramFiles(x86)\ZeroTier\One\zerotier-cli.exe",
-              "$env:ProgramData\ZeroTier\One\zerotier-cli.exe"
-          )
-
-          $cli = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-          if (-not $cli) { 
-              Write-Host "Arquivos encontrados em C:\Program*:"
-              Get-ChildItem "C:\Program*" -Recurse -Include zerotier-cli.exe -ErrorAction SilentlyContinue
-              throw "zerotier-cli.exe não encontrado"
+          # Caminhos prováveis do CLI
+          $cli = "$env:ProgramFiles\ZeroTier\One\zerotier-cli.exe"
+          if (-not (Test-Path $cli)) {
+              $cli = "$env:ProgramFiles(x86)\ZeroTier\One\zerotier-cli.exe"
           }
+          if (-not (Test-Path $cli)) { throw "zerotier-cli.exe não encontrado" }
 
           Write-Host "CLI encontrado em: $cli"
           echo "::set-output name=cli::$cli"

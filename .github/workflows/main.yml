@@ -16,24 +16,28 @@ jobs:
 
     steps:
       - name: Instalar ZeroTier
+        shell: pwsh
         run: |
           $url = "https://download.zerotier.com/dist/ZeroTierOne.msi"
           $dst = "$env:TEMP\ZeroTierOne.msi"
           Invoke-WebRequest -Uri $url -OutFile $dst
           Start-Process msiexec.exe -ArgumentList "/i `"$dst`" /quiet /norestart" -Wait
 
-      - name: Encontrar zerotier-cli.exe (otimizado)
+      - name: Encontrar zerotier-cli.exe (robusto)
         id: findcli
         shell: pwsh
         run: |
-          $cli1 = "C:\ProgramData\ZeroTier\One\zerotier-cli.exe"
-          $cli2 = "C:\Program Files (x86)\ZeroTier\One\zerotier-cli.exe"
+          $possiblePaths = @(
+              "$env:ProgramFiles\ZeroTier\One\zerotier-cli.exe",
+              "$env:ProgramFiles(x86)\ZeroTier\One\zerotier-cli.exe",
+              "$env:ProgramData\ZeroTier\One\zerotier-cli.exe"
+          )
 
-          if (Test-Path $cli1) {
-              $cli = $cli1
-          } elseif (Test-Path $cli2) {
-              $cli = $cli2
-          } else {
+          $cli = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $cli) { 
+              Write-Host "Arquivos encontrados em C:\Program*:"
+              Get-ChildItem "C:\Program*" -Recurse -Include zerotier-cli.exe -ErrorAction SilentlyContinue
               throw "zerotier-cli.exe não encontrado"
           }
 
@@ -41,6 +45,7 @@ jobs:
           echo "::set-output name=cli::$cli"
 
       - name: Entrar na rede ZeroTier
+        shell: pwsh
         run: |
           $cli = "${{ steps.findcli.outputs.cli }}"
           & $cli join ${{ github.event.inputs.zerotier_network }}
@@ -49,6 +54,7 @@ jobs:
 
       - name: Autorizar nó automaticamente (opcional)
         if: ${{ github.event.inputs.zerotier_token != '' }}
+        shell: pwsh
         run: |
           $cli = "${{ steps.findcli.outputs.cli }}"
           $nodeId = (& $cli info).Split(" ")[2]
@@ -58,6 +64,7 @@ jobs:
           Invoke-RestMethod -Uri $authUrl -Headers $headers -Method POST -Body $body -ContentType "application/json"
 
       - name: Habilitar RDP
+        shell: pwsh
         run: |
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"

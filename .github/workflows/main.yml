@@ -28,7 +28,7 @@ jobs:
         run: |
           $cli = Get-ChildItem "C:\Program*" -Recurse -Include zerotier-cli.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
           if (-not $cli) { throw "zerotier-cli.exe não encontrado" }
-          echo "CLI encontrado em: $cli"
+          Write-Host "CLI encontrado em: $cli"
           echo "::set-output name=cli::$cli"
 
       - name: Entrar na rede ZeroTier

@@ -4,31 +4,31 @@ on:
   workflow_dispatch:
     inputs:
       zerotier_network:
-        description: "ID da sua rede ZeroTier"
+        description: "ID da rede ZeroTier (ex: 8056c2e21c000001)"
         required: true
       zerotier_token:
-        description: "Token de API do ZeroTier (se precisar autorizar auto)"
+        description: "API Token do ZeroTier (opcional, para autorizar auto)"
         required: false
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-      - name: Baixar instalador do ZeroTier
+      - name: Instalar ZeroTier
         run: |
           $url = "https://download.zerotier.com/dist/ZeroTierOne.msi"
           $dst = "$env:TEMP\ZeroTierOne.msi"
           Invoke-WebRequest -Uri $url -OutFile $dst
           Start-Process msiexec.exe -ArgumentList "/i `"$dst`" /quiet /norestart" -Wait
 
-      - name: Conectar ao ZeroTier
+      - name: Entrar na rede ZeroTier
         run: |
           Start-Process -FilePath "C:\Program Files\ZeroTier\One\zerotier-cli.bat" -ArgumentList "join ${{ github.event.inputs.zerotier_network }}" -Wait
           Start-Sleep -Seconds 10
           & "C:\Program Files\ZeroTier\One\zerotier-cli.bat" listnetworks
 
-      # (Opcional) autorizar o nó automaticamente pela API
-      - name: Autorizar nó via API
+      - name: Autorizar nó automaticamente (opcional)
         if: ${{ github.event.inputs.zerotier_token != '' }}
         run: |
           $nodeId = (& "C:\Program Files\ZeroTier\One\zerotier-cli.bat" info).Split(" ")[2]
@@ -37,3 +37,8 @@ jobs:
           $body = '{ "authorized": true }'
           Invoke-RestMethod -Uri $authUrl -Headers $headers -Method POST -Body $body -ContentType "application/json"
 
+      - name: Habilitar RDP
+        run: |
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Write-Host "RDP habilitado com sucesso!"

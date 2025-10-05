@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       zerotier_network:
-        description: "ID da rede ZeroTier (ex: 8056c2e21c000001)"
+        description: "ID da rede ZeroTier (ex: d5e5fb6537bfb29a)"
         required: true
       zerotier_token:
         description: "API Token do ZeroTier (opcional, para autorizar auto)"
@@ -22,16 +22,26 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $dst
           Start-Process msiexec.exe -ArgumentList "/i `"$dst`" /quiet /norestart" -Wait
 
+      - name: Encontrar zerotier-cli.exe
+        id: findcli
+        shell: pwsh
+        run: |
+          $cli = Get-ChildItem "C:\Program*" -Recurse -Include zerotier-cli.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $cli) { throw "zerotier-cli.exe não encontrado" }
+          echo "CLI encontrado em: $cli"
+          echo "::set-output name=cli::$cli"
+
       - name: Entrar na rede ZeroTier
         run: |
-          Start-Process -FilePath "C:\Program Files\ZeroTier\One\zerotier-cli.bat" -ArgumentList "join ${{ github.event.inputs.zerotier_network }}" -Wait
+          & "${{ steps.findcli.outputs.cli }}" join ${{ github.event.inputs.zerotier_network }}
           Start-Sleep -Seconds 10
-          & "C:\Program Files\ZeroTier\One\zerotier-cli.bat" listnetworks
+          & "${{ steps.findcli.outputs.cli }}" listnetworks
 
       - name: Autorizar nó automaticamente (opcional)
         if: ${{ github.event.inputs.zerotier_token != '' }}
         run: |
-          $nodeId = (& "C:\Program Files\ZeroTier\One\zerotier-cli.bat" info).Split(" ")[2]
+          $cli = "${{ steps.findcli.outputs.cli }}"
+          $nodeId = (& $cli info).Split(" ")[2]
           $authUrl = "https://api.zerotier.com/api/v1/network/${{ github.event.inputs.zerotier_network }}/member/$nodeId"
           $headers = @{ "Authorization" = "Bearer ${{ github.event.inputs.zerotier_token }}" }
           $body = '{ "authorized": true }'

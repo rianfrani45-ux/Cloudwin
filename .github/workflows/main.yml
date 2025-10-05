@@ -3,100 +3,37 @@ name: Windows RDP via ZeroTier
 on:
   workflow_dispatch:
     inputs:
-      zt_network_id:
-        description: "ZeroTier Network ID"
+      zerotier_network:
+        description: "ID da sua rede ZeroTier"
         required: true
-      test_mode:
-        description: "Run 5-minute test loop"
-        type: boolean
-        default: false
-      runtime_minutes:
-        description: "Runtime in minutes (max 360; capped to 355)"
+      zerotier_token:
+        description: "Token de API do ZeroTier (se precisar autorizar auto)"
         required: false
-        default: "355"
-
-concurrency:
-  group: zerotier-rdp-singleton
-  cancel-in-progress: false
-
-permissions:
-  contents: read
-
-defaults:
-  run:
-    shell: pwsh
-
-env:
-  RDP_USER: Bullettemporary
-  RDP_PASS: Bullet@12345
-  TS_HOSTNAME: bullet
 
 jobs:
-  rdp:
-    runs-on: windows-2022
-    timeout-minutes: 370
+  build:
+    runs-on: windows-latest
     steps:
-      - name: 🔧 Resolve inputs
-        id: cfg
-        env:
-          RAW_ZT_NETID: ${{ inputs.zt_network_id }}
-          RAW_TEST: ${{ inputs.test_mode == true && 'true' || 'false' }}
-          RAW_RUNTIME: ${{ inputs.runtime_minutes || '355' }}
+      - name: Baixar instalador do ZeroTier
         run: |
-          function ToIntOr($v, $def){ if("$v" -match '^\d+$'){[int]$v}else{[int]$def} }
-          $ztNetId = $env:RAW_ZT_NETID
-          if (-not $ztNetId) { Write-Error "Missing required inputs"; exit 1 }
-          $isTest = ($env:RAW_TEST -match '^(?i:true|1|yes|on)$')
-          $runtime = ToIntOr $env:RAW_RUNTIME 355
-          if ($isTest) { $runtime = 5 }
-          if (-not $isTest -and $runtime -lt 6) { $runtime = 355 }
-          if ($runtime -gt 360) { $runtime = 355 }
-          "zt_netid=$ztNetId" | Out-File -Append $env:GITHUB_OUTPUT
-          "runtime=$runtime" | Out-File -Append $env:GITHUB_OUTPUT
-          Write-Host "Resolved: test=$isTest, runtime=$runtime"
+          $url = "https://download.zerotier.com/dist/ZeroTierOne.msi"
+          $dst = "$env:TEMP\ZeroTierOne.msi"
+          Invoke-WebRequest -Uri $url -OutFile $dst
+          Start-Process msiexec.exe -ArgumentList "/i `"$dst`" /quiet /norestart" -Wait
 
-      - name: ⚙️ Install ZeroTier via winget
+      - name: Conectar ao ZeroTier
         run: |
-          $ztExe = "C:\Program Files\ZeroTier\One\ZeroTierOne.exe"
-          if (-not (Test-Path $ztExe)) {
-              Write-Host "Instalando ZeroTier via winget..."
-              winget install --id=ZeroTier.ZeroTierOne -e --silent
-          } else {
-              Write-Host "ZeroTier já instalado."
-          }
-
-      - name: 🔐 Enable RDP user + firewall
-        run: |
-          $u="${{ env.RDP_USER }}"; $p="${{ env.RDP_PASS }}"
-          $sec = ConvertTo-SecureString $p -AsPlainText -Force
-          if (-not (Get-LocalUser -Name $u -ErrorAction SilentlyContinue)) {
-              New-LocalUser -Name $u -Password $sec -AccountNeverExpires
-              Add-LocalGroupMember -Group Administrators -Member $u
-              Add-LocalGroupMember -Group "Remote Desktop Users" -Member $u
-          } else {
-              Set-LocalUser -Name $u -Password $sec -AccountNeverExpires
-              Enable-LocalUser -Name $u
-          }
-          Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" | Out-Null
-
-      - name: 🔗 Join ZeroTier network
-        run: |
-          $ztCli = "C:\Program Files\ZeroTier\One\zerotier-cli.exe"
-          & $ztCli join ${{ steps.cfg.outputs.zt_netid }}
+          Start-Process -FilePath "C:\Program Files\ZeroTier\One\zerotier-cli.bat" -ArgumentList "join ${{ github.event.inputs.zerotier_network }}" -Wait
           Start-Sleep -Seconds 10
-          $ip = & $ztCli listnetworks | ForEach-Object { ($_ -split '\s+')[2] } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' } | Select-Object -First 1
-          if (-not $ip) { Write-Error "ZeroTier IP not found"; exit 1 }
-          "zt_ip=$ip" | Out-File -Append $env:GITHUB_OUTPUT
-          "### RDP (ZeroTier)`nHost: $env:TS_HOSTNAME`nZeroTier IP: $ip`nUser: $env:RDP_USER`nPass: $env:RDP_PASS" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          & "C:\Program Files\ZeroTier\One\zerotier-cli.bat" listnetworks
 
-      - name: ⏳ Keep alive
+      # (Opcional) autorizar o nó automaticamente pela API
+      - name: Autorizar nó via API
+        if: ${{ github.event.inputs.zerotier_token != '' }}
         run: |
-          $mins=[int]"${{ steps.cfg.outputs.runtime }}"
-          $end=(Get-Date).AddMinutes($mins)
-          while((Get-Date) -lt $end){
-              $left=[int]([math]::Ceiling(($end-(Get-Date)).TotalMinutes))
-              Write-Host "RDP alive... ($left min left)"
-              Start-Sleep -Seconds 60
-          }
+          $nodeId = (& "C:\Program Files\ZeroTier\One\zerotier-cli.bat" info).Split(" ")[2]
+          $authUrl = "https://api.zerotier.com/api/v1/network/${{ github.event.inputs.zerotier_network }}/member/$nodeId"
+          $headers = @{ "Authorization" = "Bearer ${{ github.event.inputs.zerotier_token }}" }
+          $body = '{ "authorized": true }'
+          Invoke-RestMethod -Uri $authUrl -Headers $headers -Method POST -Body $body -ContentType "application/json"
 

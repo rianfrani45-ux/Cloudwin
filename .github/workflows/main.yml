@@ -23,16 +23,26 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $dst
           Start-Process msiexec.exe -ArgumentList "/i `"$dst`" /quiet /norestart" -Wait
 
+      - name: Iniciar serviço ZeroTier
+        shell: pwsh
+        run: |
+          # Inicia o serviço ZeroTier no runner
+          Start-Service -Name "ZeroTierOne"
+          Start-Sleep -Seconds 5
+
       - name: Encontrar zerotier-cli.exe
         id: findcli
         shell: pwsh
         run: |
-          # Caminhos prováveis do CLI
-          $cli = "$env:ProgramFiles\ZeroTier\One\zerotier-cli.exe"
-          if (-not (Test-Path $cli)) {
-              $cli = "$env:ProgramFiles(x86)\ZeroTier\One\zerotier-cli.exe"
-          }
-          if (-not (Test-Path $cli)) { throw "zerotier-cli.exe não encontrado" }
+          # Procurar nas pastas padrões
+          $cliPaths = @(
+            "$env:ProgramFiles\ZeroTier\One\zerotier-cli.exe",
+            "$env:ProgramFiles(x86)\ZeroTier\One\zerotier-cli.exe",
+            "$env:ProgramData\ZeroTier\One\zerotier-cli.exe"
+          )
+
+          $cli = $cliPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $cli) { throw "zerotier-cli.exe não encontrado, serviço pode não estar inicializado ainda." }
 
           Write-Host "CLI encontrado em: $cli"
           echo "::set-output name=cli::$cli"

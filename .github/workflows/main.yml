@@ -22,12 +22,21 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $dst
           Start-Process msiexec.exe -ArgumentList "/i `"$dst`" /quiet /norestart" -Wait
 
-      - name: Encontrar zerotier-cli.exe
+      - name: Encontrar zerotier-cli.exe (otimizado)
         id: findcli
         shell: pwsh
         run: |
-          $cli = Get-ChildItem "C:\Program*" -Recurse -Include zerotier-cli.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $cli) { throw "zerotier-cli.exe não encontrado" }
+          $cli1 = "C:\ProgramData\ZeroTier\One\zerotier-cli.exe"
+          $cli2 = "C:\Program Files (x86)\ZeroTier\One\zerotier-cli.exe"
+
+          if (Test-Path $cli1) {
+              $cli = $cli1
+          } elseif (Test-Path $cli2) {
+              $cli = $cli2
+          } else {
+              throw "zerotier-cli.exe não encontrado"
+          }
+
           Write-Host "CLI encontrado em: $cli"
           echo "::set-output name=cli::$cli"
 

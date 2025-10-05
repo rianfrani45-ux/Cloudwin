@@ -7,7 +7,7 @@ on:
         description: "ID da rede ZeroTier (ex: d5e5fb6537bfb29a)"
         required: true
       zerotier_token:
-        description: "API Token do ZeroTier (opcional, para autorizar auto)"
+        description: "API Token do ZeroTier (opcional, para autorizar automático)"
         required: false
 
 jobs:
@@ -33,9 +33,10 @@ jobs:
 
       - name: Entrar na rede ZeroTier
         run: |
-          & "${{ steps.findcli.outputs.cli }}" join ${{ github.event.inputs.zerotier_network }}
+          $cli = "${{ steps.findcli.outputs.cli }}"
+          & $cli join ${{ github.event.inputs.zerotier_network }}
           Start-Sleep -Seconds 10
-          & "${{ steps.findcli.outputs.cli }}" listnetworks
+          & $cli listnetworks
 
       - name: Autorizar nó automaticamente (opcional)
         if: ${{ github.event.inputs.zerotier_token != '' }}
